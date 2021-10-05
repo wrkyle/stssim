@@ -1,4 +1,5 @@
-import scipy.stats as stats
+from scipy import stats
+from scipy import signal
 import numpy as np
 import matplotlib.pyplot as plt
 import pathlib
@@ -14,7 +15,7 @@ def summary_plot(time_series, return_type="absolute"):
         return_type (string): Either "absolute" or "percent".
 
     Returns:
-        None
+        Matplotlib.pyplot.Figure
     """
 
     if return_type == 'percent':
@@ -69,6 +70,100 @@ def summary_plot(time_series, return_type="absolute"):
     
     return fig
 
+def comparison_plot(series1, series2):
+
+    fig = plt.figure(constrained_layout=True, figsize=(6, 9.6), dpi=400)
+    gs = fig.add_gridspec(nrows=4, ncols=2)
+
+    ax1 = fig.add_subplot(gs[0, :])
+    ax1.plot(series1)
+    ax1.set_title('Series 1')
+    ax1.tick_params(right=True, labelright=True)
+    ax1.annotate(
+        f"n={len(series1)}",
+        xy=(.03, .95),
+        xycoords='axes fraction',
+        horizontalalignment='left',
+        verticalalignment='top',
+        fontsize=10,
+        bbox=dict(boxstyle='square,pad=.05', fc='#ffffff99', ec='none')
+    )
+
+    ax2 = fig.add_subplot(gs[1, :])
+    ax2.plot(series2)
+    ax2.set_title('Series 2')
+    ax2.tick_params(right=True, labelright=True)
+    ax2.annotate(
+        f"n={len(series2)}",
+        xy=(.03, .95),
+        xycoords='axes fraction',
+        horizontalalignment='left',
+        verticalalignment='top',
+        fontsize=10,
+        bbox=dict(boxstyle='square,pad=.05', fc='#ffffff99', ec='none')
+    )
+
+    # Pearson R
+    returns1 = np.insert(np.diff(series1), 0, 0)
+    returns2 = np.insert(np.diff(series2), 0, 0)
+    r, p_value = stats.pearsonr(returns1, returns2)
+    
+    # Cross correlation to find lag.
+    corr = signal.correlate(returns1, returns2, mode='full')
+    x = signal.correlation_lags(len(returns1), len(returns2), mode='full')
+    lag = x[corr == max(corr)][0]
+    ax3 = fig.add_subplot(gs[2, :])
+    ax3.plot(x, corr)
+    ax3.set_title('Cross Correlation')
+    ax3.annotate(
+        "max($\\rho$) @ $\ell$=" + f"{lag}",
+        xy=(.03, .95),
+        xycoords='axes fraction',
+        horizontalalignment='left',
+        verticalalignment='top',
+        fontsize=10,
+        bbox=dict(boxstyle='square,pad=.05', fc='#ffffff99', ec='none')
+    )
+
+    # Pearson R redone with lag removed.
+    if lag < 0:
+        r1 = returns1[:lag]
+        r2 = returns2[-lag:]
+        r_lag, p_value_lag = stats.pearsonr(r1, r2)
+    elif lag > 0:
+        r1 = returns1[lag:]
+        r2 = returns2[:-lag]
+        r_lag, p_value_lag = stats.pearsonr(r1, r2)
+
+    # Scatterplot
+    ax4 = fig.add_subplot(gs[3, 0])
+    ax4.scatter(returns1, returns2, s=2)
+    ax4.set_title('Scatterplot')
+    ax4.set_xlabel("series 1 returns")
+    ax4.set_ylabel("series 2 returns")
+
+    # Textual summary
+    ax5 = fig.add_subplot(gs[3, 1])
+    annotation = [
+        "$\\rho$=" + f"{r}",
+        f"p-value={p_value}",
+        "$\\rho_{\ell}$=" + f"{r_lag}",
+        "p-value$_{\ell}$=" + f"{p_value_lag}",
+    ]
+    ax5.annotate(
+        "\n".join(annotation),
+        xy=(.5, .5),
+        xycoords='axes fraction',
+        horizontalalignment='center',
+        verticalalignment='center',
+        fontsize=10,
+        bbox=dict(boxstyle='square,pad=.05', fc='#ffffff99', ec='none')
+    )
+    ax5.set_axis_off()
+
+    return fig
+
+
 class Series:
     def __init__(self, series=None):
         self.series = series
@@ -78,6 +173,24 @@ class Series:
     def plot(self, filepath, return_type="absolute"):
         plt.clf()
         f = summary_plot(self.series, return_type)
+        f.savefig(filepath)
+        plt.clf()
+
+    def compare_with(self, series, filepath):
+        """
+
+        Plot a scatterplot with another series to see how returns are related.
+    
+        Args:
+            series (Series): Another time series.
+            filepath (str): The filepath to save the resulting figure to.
+    
+        Returns:
+            None: The return value.
+        """
+    
+        plt.clf()
+        f = comparison_plot(self.series, series.series)
         f.savefig(filepath)
         plt.clf()
 
@@ -160,109 +273,4 @@ class StochasticSeries(Series):
 
 if __name__ == "__main__":
 
-    # # Set random seed for reproducibility.
-    # np.random.seed(seed=23342379)
-    # N = 10000
-
-    # # Some example distributions.
-    # t = stats.nct(nc=.02, df=2.7)
-    # norm = stats.norm(loc=0.1, scale=20)
-    # uniform = stats.uniform(loc=-50, scale=100)
-
-
-
-    # # Create a non-negative time series of N steps
-    # s1 = StochasticSeries(N, distribution=t, x0=1, no_negative=True)
-
-    # # Plot the time series.
-    # s1.plot(pathlib.Path.home() / 'time_series.png', return_type='absolute')
-
-
-    # # Create a new series linearly dependent on the first.
-    # s2 = Series()
-    # lag = 4
-    # s2.from_dependencies([s1], generator=lambda dependencies, i: 2 * (0 if i < lag else dependencies[0].returns[i - lag]) + 2*(np.random.rand() - .5), generates="returns", x0=1)
-    # s2.plot(pathlib.Path.home() / 'time_series2.png', return_type='absolute')
-
-    # # Examine Pearson correlation coefficient.
-    # r = stats.pearsonr(s1.returns, s2.returns)
-    # print(f"Correlation Coefficient={r[0]}\nTwo-tailed p-value={r[1]}")
-
-
-    # # Create a new series non-linearly dependent on the first.
-    # lag = 7
-    # s3 = Series()
-    # s3.from_dependencies([s1], generator=lambda dependencies, i: 0.0 if i < lag else np.sin(3 * dependencies[0].returns[i - lag]), generates="returns", x0=100)
-    # s3.plot(pathlib.Path.home() / 'time_series3.png', return_type='absolute')
-
-    # # Examine Pearson correlation coefficient.
-    # r = stats.pearsonr(s1.returns, s3.returns)
-    # print(f"Correlation Coefficient={r[0]}\nTwo-tailed p-value={r[1]}")
-
-
-    # # Create a new series with no dependencies.
-    # s4 = StochasticSeries(N, distribution=norm, x0=100, no_negative=True)
-    # s4.plot(pathlib.Path.home() / 'time_series4.png', return_type='absolute')
-
-    # # Examine Pearson correlation coefficient.
-    # r = stats.pearsonr(s1.returns, s4.returns)
-    # print(f"Correlation Coefficient={r[0]}\nTwo-tailed p-value={r[1]}")
-
-
-
-    # # TE Estimation
-    # # Import classes
-    # from idtxl.multivariate_te import MultivariateTE
-    # from idtxl.bivariate_te import BivariateTE
-    # from idtxl.data import Data
-    # from idtxl.visualise_graph import plot_network
-
-    # # a) Generate test data
-    # data = Data(np.array([s1.returns, s2.returns, s3.returns, s4.returns]), dim_order="ps")
-
-    # # b) Initialise analysis object and define settings
-    # network_analysis = BivariateTE()
-    # settings = dict(
-    #     cmi_estimator='JidtGaussianCMI',
-    #     max_lag_sources=8,
-    #     min_lag_sources=1,
-    #     verbose=True
-    # )
-
-    # # c) Run analysis
-    # results = network_analysis.analyse_network(settings=settings, data=data)
-
-    # # d) Plot inferred network to console and via matplotlib
-    # results.print_edge_list(weights='max_te_lag', fdr=False)
-    # plot_network(results=results, weights='max_te_lag', fdr=False)
-    # plt.savefig(pathlib.Path.home() / 'TE.png')
-    # plt.clf()
-
-
-
-    # # Cross Correlation
-    # from scipy import signal
-    # corr = signal.correlate(s1.returns, s3.returns, mode='full')
-    # print(len(s1.returns), len(corr))
-    # x = signal.correlation_lags(len(s1.returns), len(s2.returns), mode='full')
-    # plt.plot(x, corr)
-    # # plt.xlim(-100, 100)
-    # print(f"Max cross correlation at {x[corr == max(corr)]} lag.")
-    # plt.savefig(pathlib.Path.home() / 'cross_correlation.png')
-    # plt.clf()
-
-
-    def a(x):
-        return (x[0]-x[2])*(x[0]+x[2])/(-(x[0]-x[2])*(x[2]**2-x[1]**2) + (x[2]-x[1])*(x[0]**2-x[2]**2))
-
-    def b(x):
-        return (x[0]-x[2])*(x[0]**2-x[2]**2)/(-(x[0]-x[2])*(x[2]**2-x[1]**2) + (x[2]-x[1])*(x[0]**2-x[2]**2))
-
-    def c(x, aa, bb):
-        return x[2] - aa*x[1]*x[1] - bb*x[1]
-
-    x = [-11,2,19]
-    aa=a(x) 
-    bb=b(x)
-    cc=c(x,aa,bb)
-    print(f"y=({aa})x^2 + ({bb})x + {cc}")
+    pass
